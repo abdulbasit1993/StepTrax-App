@@ -13,7 +13,7 @@ import TrailRing from '../components/TrailRing';
 import { useStepCounter } from '../hooks/useStepCounter';
 import { useTheme } from '../theme/ThemeContext';
 import type { Palette } from '../theme/theme';
-import { formatDistance, GOAL_STEPS } from '../utils/helpers';
+import { formatDistance, getGreeting, GOAL_STEPS } from '../utils/helpers';
 
 const SENSOR_LABEL = {
   STEP_DETECTOR: 'Step detector',
@@ -31,9 +31,18 @@ export default function HomeScreen({ counter }: Props) {
     counter;
 
   const running = status === 'running';
-  const ringSize = Math.min(width - 48, 320);
+  // Ring card has 24 px screen padding and 20 px inner padding on each side.
+  const ringSize = Math.min(width - 48 - 40, 300);
   const remaining = Math.max(0, GOAL_STEPS - todaySteps);
+  const percent = Math.min(100, Math.round((todaySteps / GOAL_STEPS) * 100));
   const disabled = status === 'loading' || source === 'NONE';
+
+  const greeting = getGreeting();
+  const dateLabel = new Date().toLocaleDateString(undefined, {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+  });
 
   const primaryLabel = running
     ? 'Pause'
@@ -61,7 +70,12 @@ export default function HomeScreen({ counter }: Props) {
       showsVerticalScrollIndicator={false}
     >
       <View style={styles.header}>
-        <Text style={styles.brand}>StepTrax</Text>
+        <View style={styles.headerText}>
+          <Text style={styles.greeting} accessibilityRole="header">
+            {greeting}
+          </Text>
+          <Text style={styles.date}>{dateLabel}</Text>
+        </View>
         <View style={styles.chip}>
           <View
             style={[
@@ -73,10 +87,10 @@ export default function HomeScreen({ counter }: Props) {
         </View>
       </View>
 
-      <View style={styles.ringWrap}>
+      <View style={styles.ringCard}>
         <TrailRing value={todaySteps} goal={GOAL_STEPS} size={ringSize}>
           <Text
-            style={[styles.heroNumber, { fontSize: ringSize * 0.2 }]}
+            style={[styles.heroNumber, { fontSize: ringSize * 0.21 }]}
             accessibilityLiveRegion="polite"
             accessibilityLabel={`${todaySteps} steps today`}
             adjustsFontSizeToFit
@@ -86,25 +100,32 @@ export default function HomeScreen({ counter }: Props) {
           </Text>
           <Text style={styles.heroLabel}>steps today</Text>
         </TrailRing>
-        <Text style={styles.goalText}>
-          {remaining === 0
-            ? 'Daily goal reached'
-            : `${remaining.toLocaleString()} to your ${GOAL_STEPS.toLocaleString()}-step goal`}
-        </Text>
+        <View style={styles.goalRow}>
+          <View style={styles.goalPill}>
+            <Text style={styles.goalPillText}>{percent}% </Text>
+          </View>
+          <Text style={styles.goalText}>
+            {remaining === 0
+              ? 'Daily goal reached'
+              : `${remaining.toLocaleString()} steps to your goal`}
+          </Text>
+        </View>
       </View>
 
       <View style={styles.tiles}>
         <View style={styles.tile}>
+          <Text style={styles.tileLabel}>Current walk</Text>
           <Text style={styles.tileValue} numberOfLines={1} adjustsFontSizeToFit>
             {steps.toLocaleString()}
           </Text>
-          <Text style={styles.tileLabel}>Current walk</Text>
+          <Text style={styles.tileUnit}>steps</Text>
         </View>
         <View style={styles.tile}>
+          <Text style={styles.tileLabel}>Today's distance</Text>
           <Text style={styles.tileValue} numberOfLines={1} adjustsFontSizeToFit>
             {formatDistance(todaySteps)}
           </Text>
-          <Text style={styles.tileLabel}>Today's distance</Text>
+          <Text style={styles.tileUnit}>walked</Text>
         </View>
       </View>
 
@@ -166,12 +187,16 @@ const makeStyles = (c: Palette) =>
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
+      gap: 12,
     },
-    brand: {
-      fontSize: 22,
-      fontWeight: '700',
+    headerText: { flex: 1 },
+    greeting: {
+      fontSize: 28,
+      fontWeight: '800',
       color: c.ink,
+      letterSpacing: -0.5,
     },
+    date: { fontSize: 14, color: c.muted, marginTop: 2 },
     chip: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -185,45 +210,75 @@ const makeStyles = (c: Palette) =>
     },
     dot: { width: 8, height: 8, borderRadius: 4 },
     chipText: { fontSize: 13, color: c.ink },
-    ringWrap: {
+    ringCard: {
       alignItems: 'center',
-      marginTop: 28,
+      marginTop: 24,
+      paddingVertical: 24,
+      paddingHorizontal: 20,
+      borderRadius: 32,
+      backgroundColor: c.card,
+      borderWidth: 1,
+      borderColor: c.line,
+      elevation: 3,
+      shadowColor: c.trail,
+      shadowOpacity: 0.12,
+      shadowRadius: 16,
+      shadowOffset: { width: 0, height: 6 },
     },
     heroNumber: {
       color: c.ink,
       fontWeight: '300',
       fontVariant: ['tabular-nums'],
+      letterSpacing: -1,
     },
     heroLabel: { fontSize: 15, color: c.muted, marginTop: 2 },
-    goalText: { marginTop: 16, fontSize: 14, color: c.muted },
+    goalRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      marginTop: 20,
+    },
+    goalPill: {
+      paddingVertical: 4,
+      paddingHorizontal: 10,
+      borderRadius: 999,
+      backgroundColor: c.trailSoft,
+    },
+    goalPillText: {
+      fontSize: 13,
+      fontWeight: '700',
+      color: c.trail,
+      fontVariant: ['tabular-nums'],
+    },
+    goalText: { fontSize: 14, color: c.muted },
     tiles: {
       flexDirection: 'row',
       gap: 12,
-      marginTop: 28,
+      marginTop: 16,
     },
     tile: {
       flex: 1,
       backgroundColor: c.card,
-      borderRadius: 16,
+      borderRadius: 22,
       borderWidth: 1,
       borderColor: c.line,
       paddingVertical: 16,
       paddingHorizontal: 18,
-      justifyContent: 'center',
     },
     tileValue: {
-      fontSize: 22,
-      fontWeight: '700',
-      color: c.ink,
+      fontSize: 26,
+      fontWeight: '800',
+      color: c.trail,
       fontVariant: ['tabular-nums'],
-      letterSpacing: -0.3,
+      letterSpacing: -0.5,
+      marginTop: 6,
     },
     tileLabel: {
       fontSize: 13,
       fontWeight: '500',
       color: c.muted,
-      marginTop: 4,
     },
+    tileUnit: { fontSize: 12, color: c.muted, marginTop: 2 },
     spacer: { flex: 1, minHeight: 24 },
     notice: {
       backgroundColor: c.card,
@@ -247,27 +302,33 @@ const makeStyles = (c: Palette) =>
     controls: { flexDirection: 'row', gap: 12 },
     primary: {
       flex: 2,
-      minHeight: 60,
-      borderRadius: 18,
+      minHeight: 64,
+      borderRadius: 22,
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: c.trail,
+      elevation: 6,
+      shadowColor: c.trail,
+      shadowOpacity: 0.35,
+      shadowRadius: 12,
+      shadowOffset: { width: 0, height: 6 },
     },
     primaryRunning: {
       backgroundColor: c.ink,
+      shadowColor: c.ink,
     },
     primaryText: {
       color: c.onTrail,
       fontSize: 18,
-      fontWeight: '600',
+      fontWeight: '700',
     },
     primaryTextRunning: {
       color: c.onInk,
     },
     secondary: {
       flex: 1,
-      minHeight: 60,
-      borderRadius: 18,
+      minHeight: 64,
+      borderRadius: 22,
       alignItems: 'center',
       justifyContent: 'center',
       backgroundColor: c.card,

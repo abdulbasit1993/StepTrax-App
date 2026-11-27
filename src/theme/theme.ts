@@ -3,8 +3,10 @@ export type Palette = {
   card: string;
   ink: string; // primary text
   muted: string; // secondary text
-  trail: string; // brand blue
-  trailOff: string; // inactive ticks / switch track
+  trail: string; // brand blue (gradient start)
+  trailEnd: string; // gradient end for the ring
+  trailSoft: string; // soft brand tint for pills and highlights
+  trailOff: string; // inactive ring track / switch track
   live: string;
   danger: string;
   line: string;
@@ -18,7 +20,9 @@ export const lightColors: Palette = {
   ink: '#0E1A24',
   muted: '#5B6B78',
   trail: '#2D5BFF',
-  trailOff: '#CBD5DE',
+  trailEnd: '#19C3FF',
+  trailSoft: '#E3EAFF',
+  trailOff: '#D3DCF5',
   live: '#1E8E63',
   danger: '#B93A1B',
   line: '#D5DDE4',
@@ -32,7 +36,9 @@ export const darkColors: Palette = {
   ink: '#EAF1F6',
   muted: '#8DA0AF',
   trail: '#4A72FF',
-  trailOff: '#263949',
+  trailEnd: '#3FE0FF',
+  trailSoft: '#1B2C55',
+  trailOff: '#1F3350',
   live: '#38C68F',
   danger: '#F0714F',
   line: '#223445',
