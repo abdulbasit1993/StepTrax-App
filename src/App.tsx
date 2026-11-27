@@ -11,14 +11,16 @@ import {
   SafeAreaProvider,
   useSafeAreaInsets,
 } from 'react-native-safe-area-context';
-import { HomeIcon, SettingsIcon } from './components/Icons';
+import { HomeIcon, HistoryIcon, SettingsIcon } from './components/Icons';
 import { useStepCounter } from './hooks/useStepCounter';
 import HomeScreen from './screens/HomeScreen';
+import HistoryScreen from './screens/HistoryScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import { ThemeProvider, useTheme } from './theme/ThemeContext';
 
 type RootTabParamList = {
   Home: undefined;
+  History: undefined;
   Settings: undefined;
 };
 
@@ -71,6 +73,21 @@ function Shell() {
             }}
           >
             {() => <HomeScreen counter={counter} />}
+          </Tab.Screen>
+          <Tab.Screen
+            name="History"
+            options={{
+              tabBarIcon: ({ color, size }) => (
+                <HistoryIcon color={color} size={size} />
+              ),
+            }}
+          >
+            {() => (
+              <HistoryScreen
+                dailyHistory={counter.dailyHistory}
+                sessions={counter.sessions}
+              />
+            )}
           </Tab.Screen>
           <Tab.Screen
             name="Settings"

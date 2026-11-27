@@ -1,30 +1,58 @@
 import NativeStepCounter from './specs/NativeStepCounter';
 
-const KEY = 'steptrax.v1';
+const KEY = 'steptrax.v2';
 
-type Saved = { steps: number; day: string };
+export type WalkSession = {
+  id: string;
+  date: string; // YYYY-MM-DD
+  startedAt: number; // epoch ms
+  endedAt: number; // epoch ms
+  steps: number;
+}
 
-const today = (): string => {
-  const d = new Date();
-  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
-};
+export type ActiveSession = {
+  date: string;
+  startedAt: number;
+  steps: number;
+}
 
-export async function loadSteps(): Promise<number> {
+export type StepData = {
+  daily: Record<string, number>;
+  sessions: WalkSession[];
+  activeSession: ActiveSession | null;
+}
+
+export const getDateKey = (d = new Date()): string => {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+} 
+
+const EMPTY_DATA: StepData = {
+  daily: {},
+  sessions: [],
+  activeSession: null,
+}
+
+export async function loadStepData(): Promise<StepData> {
   try {
     const raw = await NativeStepCounter.getItem(KEY);
     if (!raw) {
-      return 0;
+      return { ...EMPTY_DATA };
     }
-    const saved = JSON.parse(raw) as Saved;
-    return saved.day === today() && Number.isFinite(saved.steps)
-      ? Math.max(0, Math.floor(saved.steps))
-      : 0;
+    const parsed = JSON.parse(raw) as Partial<StepData>;
+    return {
+      daily: 
+        parsed.daily && typeof parsed.daily === 'object' ? parsed.daily : {},
+      sessions: Array.isArray(parsed.sessions) ? parsed.sessions : [],
+      activeSession: parsed.activeSession ?? null
+    }
   } catch {
-    return 0;
+    return { ...EMPTY_DATA };
   }
 }
 
-export function saveSteps(steps: number): void {
-  const payload: Saved = { steps, day: today() };
-  NativeStepCounter.setItem(KEY, JSON.stringify(payload));
+export function saveStepData(data: StepData): void {
+  NativeStepCounter.setItem(KEY, JSON.stringify(data));
 }

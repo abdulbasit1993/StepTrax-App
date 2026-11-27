@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { PermissionsAndroid, Platform } from 'react-native';
 import NativeStepCounter from '../specs/NativeStepCounter';
-import { loadSteps, saveSteps } from '../storage';
+import {
+  ActiveSession,
+  getDateKey,
+  loadStepData,
+  saveStepData,
+  StepData,
+  WalkSession,
+} from '../storage';
 
 export type Status = 'loading' | 'idle' | 'running' | 'paused';
 export type SensorKind = 'STEP_DETECTOR' | 'ACCELEROMETER' | 'NONE';
@@ -27,27 +34,77 @@ async function ensureActivityRecognition(): Promise<boolean> {
 
 export function useStepCounter() {
   const [steps, setSteps] = useState(0);
+  const [todaySteps, setTodaySteps] = useState(0);
+  const [dailyHistory, setDailyHistory] = useState<Record<string, number>>({});
+  const [sessions, setSessions] = useState<WalkSession[]>([]);
   const [status, setStatus] = useState<Status>('loading');
   const [available, setAvailable] = useState<SensorKind>('NONE');
   const [source, setSource] = useState<SensorKind>('NONE');
   const [notice, setNotice] = useState<string | null>(null);
-  const stepsRef = useRef(0);
 
-  // Load the saved count and wire up the native event stream.
+  const stepsRef = useRef(0);
+  const dataRef = useRef<StepData>({
+    daily: {},
+    sessions: [],
+    activeSession: null,
+  });
+  const sessionStartRef = useRef<number | null>(null);
+  const lastProcessedStepsRef = useRef(0);
+
+  const persist = useCallback((nextData: StepData) => {
+    dataRef.current = nextData;
+    setDailyHistory({ ...nextData.daily });
+    setSessions([...nextData.sessions]);
+    setTodaySteps(nextData.daily[getDateKey()] ?? 0);
+    saveStepData(nextData);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
       const [type, saved] = await Promise.all([
         NativeStepCounter.getSensorType(),
-        loadSteps(),
+        loadStepData(),
       ]);
       if (cancelled) {
         return;
       }
-      stepsRef.current = saved;
-      setSteps(saved);
+
+      const today = getDateKey();
+      let restoredSteps = 0;
+
+      // If an active session exists from a previous day, archive it automatically
+      if (saved.activeSession) {
+        if (saved.activeSession.date === today) {
+          restoredSteps = saved.activeSession.steps;
+          sessionStartRef.current = saved.activeSession.startedAt;
+        } else if (saved.activeSession.steps > 0) {
+          saved.sessions = [
+            {
+              id: `${saved.activeSession.startedAt}`,
+              date: saved.activeSession.date,
+              startedAt: saved.activeSession.startedAt,
+              endedAt: saved.activeSession.startedAt,
+              steps: saved.activeSession.steps,
+            },
+            ...saved.sessions,
+          ];
+          saved.activeSession = null;
+          saveStepData(saved);
+        }
+      }
+
+      dataRef.current = saved;
+      stepsRef.current = restoredSteps;
+      lastProcessedStepsRef.current = restoredSteps;
+
+      setSteps(restoredSteps);
+      setDailyHistory(saved.daily);
+      setSessions(saved.sessions);
+      setTodaySteps(saved.daily[today] ?? 0);
       setAvailable(type as SensorKind);
       setSource(type as SensorKind);
+
       if (type === 'NONE') {
         setNotice('This device has no motion sensor StepTrax can use.');
       }
@@ -55,8 +112,39 @@ export function useStepCounter() {
     })();
 
     const subscription = NativeStepCounter.onStepUpdate(event => {
-      stepsRef.current = event.steps;
-      setSteps(event.steps);
+      const newSessionSteps = Math.max(0, Math.floor(event.steps));
+      const delta = Math.max(
+        0,
+        newSessionSteps - lastProcessedStepsRef.current,
+      );
+      lastProcessedStepsRef.current = newSessionSteps;
+      stepsRef.current = newSessionSteps;
+      setSteps(newSessionSteps);
+
+      if (delta > 0) {
+        const today = getDateKey();
+        const startedAt = sessionStartRef.current ?? Date.now();
+        sessionStartRef.current = startedAt;
+
+        const currentDaily = dataRef.current.daily[today] ?? 0;
+        const nextDaily = {
+          ...dataRef.current.daily,
+          [today]: currentDaily + delta,
+        };
+        const activeSession: ActiveSession = {
+          date: today,
+          startedAt,
+          steps: newSessionSteps,
+        };
+
+        dataRef.current = {
+          ...dataRef.current,
+          daily: nextDaily,
+          activeSession,
+        };
+        setTodaySteps(nextDaily[today]);
+        setDailyHistory(nextDaily);
+      }
     });
 
     return () => {
@@ -66,12 +154,14 @@ export function useStepCounter() {
     };
   }, []);
 
-  // Persist shortly after the count settles (debounced so we don't write on every step).
+  // Debounced disk persistence while walking
   useEffect(() => {
     if (status === 'loading') {
       return;
     }
-    const id = setTimeout(() => saveSteps(steps), 400);
+    const id = setTimeout(() => {
+      saveStepData(dataRef.current);
+    }, 400);
     return () => clearTimeout(id);
   }, [steps, status]);
 
@@ -92,6 +182,9 @@ export function useStepCounter() {
         stepsRef.current,
         forceAccelerometer,
       );
+      if (!sessionStartRef.current) {
+        sessionStartRef.current = Date.now();
+      }
       setSource(used as SensorKind);
       setStatus('running');
     } catch (e) {
@@ -101,16 +194,54 @@ export function useStepCounter() {
 
   const pause = useCallback(() => {
     NativeStepCounter.pause();
+    saveStepData(dataRef.current);
     setStatus('paused');
   }, []);
 
   const reset = useCallback(() => {
-    NativeStepCounter.reset(); // emits steps = 0 back through onStepUpdate
-    stepsRef.current = 0;
-    setSteps(0);
-    saveSteps(0);
-    setStatus(prev => (prev === 'running' ? 'running' : 'idle'));
-  }, []);
+    const completedSteps = stepsRef.current;
+    const startedAt = sessionStartRef.current ?? Date.now();
+    const endedAt = Date.now();
 
-  return { steps, status, source, notice, start, pause, reset };
+    let nextSessions = dataRef.current.sessions;
+    if (completedSteps > 0) {
+      const finishedSession: WalkSession = {
+        id: `${startedAt}-${endedAt}`,
+        date: getDateKey(new Date(startedAt)),
+        startedAt,
+        endedAt,
+        steps: completedSteps,
+      };
+      nextSessions = [finishedSession, ...nextSessions];
+    }
+
+    NativeStepCounter.reset();
+    stepsRef.current = 0;
+    lastProcessedStepsRef.current = 0;
+    sessionStartRef.current = status === 'running' ? Date.now() : null;
+
+    setSteps(0);
+    persist({
+      daily: dataRef.current.daily,
+      sessions: nextSessions,
+      activeSession:
+        status === 'running'
+          ? { date: getDateKey(), startedAt: Date.now(), steps: 0 }
+          : null,
+    });
+    setStatus(prev => (prev === 'running' ? 'running' : 'idle'));
+  }, [persist, status]);
+
+  return {
+    steps,
+    todaySteps,
+    dailyHistory,
+    sessions,
+    status,
+    source,
+    notice,
+    start,
+    pause,
+    reset,
+  };
 }

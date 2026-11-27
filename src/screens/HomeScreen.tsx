@@ -27,11 +27,12 @@ export default function HomeScreen({ counter }: Props) {
   const { colors } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { width } = useWindowDimensions();
-  const { steps, status, source, notice, start, pause, reset } = counter;
+  const { steps, todaySteps, status, source, notice, start, pause, reset } =
+    counter;
 
   const running = status === 'running';
   const ringSize = Math.min(width - 48, 320);
-  const remaining = Math.max(0, GOAL_STEPS - steps);
+  const remaining = Math.max(0, GOAL_STEPS - todaySteps);
   const disabled = status === 'loading' || source === 'NONE';
 
   const primaryLabel = running
@@ -44,10 +45,14 @@ export default function HomeScreen({ counter }: Props) {
     if (steps === 0) {
       return;
     }
-    Alert.alert('Reset steps?', "Today's count goes back to zero.", [
-      { text: 'Keep steps', style: 'cancel' },
-      { text: 'Reset', style: 'destructive', onPress: reset },
-    ]);
+    Alert.alert(
+      'Finish & reset walk?',
+      'This walk will be saved to your Sessions log and the walk counter will reset to zero. Your daily total stays intact.',
+      [
+        { text: 'Keep walking', style: 'cancel' },
+        { text: 'Save & Reset', onPress: reset },
+      ],
+    );
   };
 
   return (
@@ -69,35 +74,37 @@ export default function HomeScreen({ counter }: Props) {
       </View>
 
       <View style={styles.ringWrap}>
-        <TrailRing value={steps} goal={GOAL_STEPS} size={ringSize}>
+        <TrailRing value={todaySteps} goal={GOAL_STEPS} size={ringSize}>
           <Text
             style={[styles.heroNumber, { fontSize: ringSize * 0.2 }]}
             accessibilityLiveRegion="polite"
-            accessibilityLabel={`${steps} steps today`}
+            accessibilityLabel={`${todaySteps} steps today`}
             adjustsFontSizeToFit
             numberOfLines={1}
           >
-            {steps.toLocaleString()}
+            {todaySteps.toLocaleString()}
           </Text>
           <Text style={styles.heroLabel}>steps today</Text>
         </TrailRing>
         <Text style={styles.goalText}>
           {remaining === 0
-            ? 'Goal reached'
+            ? 'Daily goal reached'
             : `${remaining.toLocaleString()} to your ${GOAL_STEPS.toLocaleString()}-step goal`}
         </Text>
       </View>
 
       <View style={styles.tiles}>
         <View style={styles.tile}>
-          <Text style={styles.tileValue}>{formatDistance(steps)}</Text>
-          <Text style={styles.tileLabel}>Distance</Text>
+          <Text style={styles.tileValue} numberOfLines={1} adjustsFontSizeToFit>
+            {steps.toLocaleString()}
+          </Text>
+          <Text style={styles.tileLabel}>Current walk</Text>
         </View>
         <View style={styles.tile}>
-          <Text style={styles.tileValue}>
-            {Math.min(100, Math.round((steps / GOAL_STEPS) * 100))}%
+          <Text style={styles.tileValue} numberOfLines={1} adjustsFontSizeToFit>
+            {formatDistance(todaySteps)}
           </Text>
-          <Text style={styles.tileLabel}>Of daily goal</Text>
+          <Text style={styles.tileLabel}>Today's distance</Text>
         </View>
       </View>
 
@@ -200,15 +207,20 @@ const makeStyles = (c: Palette) =>
       borderRadius: 16,
       borderWidth: 1,
       borderColor: c.line,
+      paddingVertical: 16,
+      paddingHorizontal: 18,
+      justifyContent: 'center',
     },
     tileValue: {
-      fontSize: 26,
-      fontWeight: '600',
+      fontSize: 22,
+      fontWeight: '700',
       color: c.ink,
       fontVariant: ['tabular-nums'],
+      letterSpacing: -0.3,
     },
     tileLabel: {
       fontSize: 13,
+      fontWeight: '500',
       color: c.muted,
       marginTop: 4,
     },
